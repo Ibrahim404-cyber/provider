@@ -38,16 +38,41 @@ export default async function handler(req, res) {
   }
 
   const messages = Array.isArray(body.messages) ? body.messages : [];
+  
+  // System Prompt এবং User Message আলাদা করি
+  const systemMsg = messages.find(m => m.role === 'system');
   const lastUser = [...messages].reverse().find(m => m.role === 'user');
+  
   if (!lastUser) return res.status(400).json(openaiError('messages must include a user message'));
 
-  let prompt;
-  if (typeof lastUser.content === 'string') prompt = lastUser.content;
-  else if (Array.isArray(lastUser.content)) {
-    prompt = lastUser.content.filter(p => p.type === 'text').map(p => p.text).join('\n');
-  } else prompt = String(lastUser.content || '');
+  // --- Prompt Construction ---
+  let prompt = '';
 
-  if (!prompt.trim()) return res.status(400).json(openaiError('User message content is empty'));
+  // ১. System Instructions (যদি থাকে)
+  if (systemMsg) {
+    let sysText = '';
+    if (typeof systemMsg.content === 'string') sysText = systemMsg.content;
+    else if (Array.isArray(systemMsg.content)) {
+      sysText = systemMsg.content.filter(p => p.type === 'text').map(p => p.text).join('\n');
+    }
+    if (sysText.trim()) {
+      prompt += `[System Instructions]:\n${sysText.trim()}\n\n`;
+    }
+  }
+
+  // ২. User Message
+  let userText = '';
+  if (typeof lastUser.content === 'string') {
+    userText = lastUser.content;
+  } else if (Array.isArray(lastUser.content)) {
+    userText = lastUser.content.filter(p => p.type === 'text').map(p => p.text).join('\n');
+  } else {
+    userText = String(lastUser.content || '');
+  }
+
+  prompt += `[User]:\n${userText.trim()}`;
+
+  if (!prompt.trim()) return res.status(400).json(openaiError('Message content is empty'));
 
   // --- Upstream call ---
   let result;
